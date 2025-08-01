@@ -7,8 +7,10 @@ cmds = ['npm ci']
 [phases.build]
 cmds = [
   'mkdir -p data',
-  'npm run railway:build'
+  'mkdir -p prisma',
+  'npm run build',
+  'npx prisma generate'
 ]
 
 [start]
-cmd = 'npm start'
+cmd = 'node scripts/start-railway.js'
