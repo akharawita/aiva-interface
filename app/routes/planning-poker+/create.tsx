@@ -10,13 +10,15 @@ import {
 	useActionData,
 	type ActionFunctionArgs,
 } from 'react-router'
+import { useState } from 'react'
 import { z } from 'zod'
 import { type Route } from './+types/create.ts'
 
 const CreateSessionSchema = z.object({
-	ownerName: z.string().min(1, 'Your name is required').max(50),
 	sessionName: z.string().min(1, 'Session name is required').max(100),
+	ownerName: z.string().max(50).optional(),
 	description: z.string().max(500).optional(),
+	customVoteOptions: z.string().max(200).optional(),
 })
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -29,19 +31,70 @@ export async function action({ request }: ActionFunctionArgs) {
 		return submission.reply()
 	}
 
-	const { ownerName, sessionName, description } = submission.value
+	const { ownerName, sessionName, description, customVoteOptions } = submission.value
+
+	// Use "Host" as default if ownerName is empty
+	const finalOwnerName = ownerName?.trim() || 'Host'
 
 	try {
+		// Parse custom vote options if provided
+		let parsedCustomOptions: string[] | undefined = undefined
+		if (customVoteOptions?.trim()) {
+			parsedCustomOptions = customVoteOptions
+				.split(',')
+				.map(option => option.trim())
+				.filter(option => option.length > 0)
+
+			// Validate custom options
+			if (parsedCustomOptions.length === 0) {
+				return submission.reply({
+					fieldErrors: {
+						customVoteOptions: ['Please provide at least one vote option'],
+					},
+				})
+			}
+
+			if (parsedCustomOptions.length > 10) {
+				return submission.reply({
+					fieldErrors: {
+						customVoteOptions: ['Maximum 10 vote options allowed'],
+					},
+				})
+			}
+
+			// Check for duplicates
+			const uniqueOptions = new Set(parsedCustomOptions)
+			if (uniqueOptions.size !== parsedCustomOptions.length) {
+				return submission.reply({
+					fieldErrors: {
+						customVoteOptions: ['Duplicate vote options are not allowed'],
+					},
+				})
+			}
+
+			// Validate each option length
+			for (const option of parsedCustomOptions) {
+				if (option.length > 5) {
+					return submission.reply({
+						fieldErrors: {
+							customVoteOptions: ['Each vote option must be 5 characters or less'],
+						},
+					})
+				}
+			}
+		}
+
 		// Create session in memory storage
 		const session = PlanningPokerSessionManager.createSession({
 			name: sessionName,
 			description: description || undefined,
-			ownerName,
+			ownerName: finalOwnerName,
+			customVoteOptions: parsedCustomOptions,
 		})
 
 		console.log('Created session:', session.sessionCode)
 		return redirect(
-			`/planning-poker/session/${session.sessionCode}?owner=${encodeURIComponent(ownerName)}`,
+			`/planning-poker/session/${session.sessionCode}?owner=${encodeURIComponent(finalOwnerName)}`,
 		)
 	} catch (error) {
 		console.error('Error creating session:', error)
@@ -70,6 +123,7 @@ export const meta: Route.MetaFunction = () => [
 
 export default function CreateSession() {
 	const lastResult = useActionData<typeof action>()
+	const [showCustomOptions, setShowCustomOptions] = useState(false)
 	const [form, fields] = useForm({
 		id: 'create-session',
 		constraint: getZodConstraint(CreateSessionSchema),
@@ -179,6 +233,26 @@ export default function CreateSession() {
 											</p>
 										</div>
 									</div>
+									<div className="flex items-start gap-3">
+										<div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10">
+											<span className="text-sm">🃏</span>
+										</div>
+										<div className="flex-1">
+											<p className="text-sm font-medium">
+												Ready-to-use Fibonacci voting cards
+											</p>
+											<p className="text-muted-foreground text-xs mb-2">
+												Perfect for agile story point estimation
+											</p>
+											<div className="flex flex-wrap gap-1">
+												{['1', '2', '3', '5', '8', '13', '21', '?', '☕'].map((option) => (
+													<span key={option} className="bg-primary/10 text-primary rounded px-1.5 py-0.5 text-xs font-medium">
+														{option}
+													</span>
+												))}
+											</div>
+										</div>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -200,26 +274,7 @@ export default function CreateSession() {
 
 							<Form method="POST" {...getFormProps(form)}>
 								<div className="space-y-6">
-									{/* Your Name Field */}
-									<div className="group">
-										<Field
-											labelProps={{
-												htmlFor: fields.ownerName.id,
-												children: 'Your Name',
-												className:
-													'text-foreground mb-3 block text-sm font-semibold flex items-center gap-2',
-											}}
-											inputProps={{
-												...getInputProps(fields.ownerName, { type: 'text' }),
-												placeholder: 'Enter your name',
-												className:
-													'text-lg py-4 px-4 rounded-2xl border-2 border-muted hover:border-primary/50 focus:border-primary transition-all duration-200 bg-background/80 backdrop-blur-sm shadow-sm focus:shadow-lg',
-											}}
-											errors={fields.ownerName.errors}
-										/>
-									</div>
-
-									{/* Session Name Field - New Line */}
+									{/* Session Name Field - First */}
 									<div className="group">
 										<Field
 											labelProps={{
@@ -237,6 +292,64 @@ export default function CreateSession() {
 											errors={fields.sessionName.errors}
 										/>
 									</div>
+
+									{/* Your Name Field - Second (Optional) */}
+									<div className="group">
+										<Field
+											labelProps={{
+												htmlFor: fields.ownerName.id,
+												children: (
+													<div className="flex items-center gap-2">
+														<span>Your Name</span>
+														<span className="text-muted-foreground text-xs">(Optional)</span>
+													</div>
+												),
+												className:
+													'text-foreground mb-3 block text-sm font-semibold',
+											}}
+											inputProps={{
+												...getInputProps(fields.ownerName, { type: 'text' }),
+												placeholder: 'Defaults to "Host"',
+												className:
+													'text-lg py-4 px-4 rounded-2xl border-2 border-muted hover:border-primary/50 focus:border-primary transition-all duration-200 bg-background/80 backdrop-blur-sm shadow-sm focus:shadow-lg',
+											}}
+											errors={fields.ownerName.errors}
+										/>
+									</div>
+
+									{/* Custom Vote Options Toggle */}
+									<div className="group">
+										<button
+											type="button"
+											onClick={() => setShowCustomOptions(!showCustomOptions)}
+											className="text-foreground mb-3 flex items-center gap-2 text-sm font-semibold transition-colors hover:text-primary"
+										>
+											<span>Custom Vote Options</span>
+											<span className="text-muted-foreground text-xs">(Optional)</span>
+											<span className="text-xs ml-auto">
+												{showCustomOptions ? '▲' : '▼'}
+											</span>
+										</button>
+									</div>
+
+									{/* Custom Vote Options Field - Collapsible */}
+									{showCustomOptions && (
+										<div className="group animate-in slide-in-from-top-2 duration-200">
+											<Field
+												inputProps={{
+													...getInputProps(fields.customVoteOptions, { type: 'text' }),
+													placeholder: 'e.g., 0.5,1,2,3,5,8 or XS,S,M,L,XL',
+													className:
+														'text-lg py-4 px-4 rounded-2xl border-2 border-muted hover:border-primary/50 focus:border-primary transition-all duration-200 bg-background/80 backdrop-blur-sm shadow-sm focus:shadow-lg',
+												}}
+												errors={fields.customVoteOptions.errors}
+											/>
+											<p className="text-muted-foreground mt-2 text-xs">
+												Leave empty for default Fibonacci options (1,2,3,5,8,13,21,?,☕). 
+												Enter comma-separated values. Max 10 options, 5 characters each.
+											</p>
+										</div>
+									)}
 
 									{/* Action Buttons */}
 									<div className="pt-4">

@@ -37,6 +37,7 @@ export interface PlanningPokerSession {
 	connections: string[]
 	votes: Record<string, string> // participantId -> vote value
 	votesRevealed: boolean
+	customVoteOptions?: string[] // Custom voting options set by session owner
 }
 
 // In-memory storage for active sessions
@@ -75,6 +76,7 @@ export class PlanningPokerSessionManager {
 		name: string
 		description?: string
 		ownerName: string
+		customVoteOptions?: string[]
 	}): PlanningPokerSession {
 		let sessionCode: string
 		do {
@@ -98,6 +100,7 @@ export class PlanningPokerSessionManager {
 			connections: [],
 			votes: {},
 			votesRevealed: false,
+			customVoteOptions: data.customVoteOptions,
 		}
 
 		activeSessions.set(sessionCode, session)
@@ -517,4 +520,5 @@ export class PlanningPokerSessionManager {
 			new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
 		)
 	}
+
 }

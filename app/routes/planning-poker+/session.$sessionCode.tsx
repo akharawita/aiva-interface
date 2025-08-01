@@ -105,6 +105,9 @@ export default function PlanningPokerSession() {
 	)
 	const [sessionIsLocked, setSessionIsLocked] = useState(session.isLocked)
 	const [voteCount, setVoteCount] = useState(Object.keys(session.votes).length)
+	const [sessionCustomOptions, setSessionCustomOptions] = useState(
+		session.customVoteOptions,
+	)
 
 	// Calculate voting participants (exclude owner from count)
 	const votingParticipants = sessionParticipants.filter(
@@ -128,6 +131,7 @@ export default function PlanningPokerSession() {
 		voteCount: number
 		timestamp: number
 		participantName?: string
+		customVoteOptions?: string[]
 		revealedVotes?: Array<{
 			participantId: string
 			participantName: string
@@ -145,7 +149,8 @@ export default function PlanningPokerSession() {
 				JSON.stringify(sessionData.votes) !== JSON.stringify(sessionVotes) ||
 				sessionData.votesRevealed !== sessionVotesRevealed ||
 				sessionData.participants.length !== sessionParticipants.length ||
-				(sessionData.isLocked !== undefined && sessionData.isLocked !== sessionIsLocked)
+				(sessionData.isLocked !== undefined &&
+					sessionData.isLocked !== sessionIsLocked)
 
 			if (hasChanges) {
 				console.log(
@@ -162,6 +167,11 @@ export default function PlanningPokerSession() {
 					setSessionIsLocked(sessionData.isLocked)
 				}
 
+				// Update custom vote options if provided
+				if (sessionData.customVoteOptions !== undefined) {
+					setSessionCustomOptions(sessionData.customVoteOptions)
+				}
+
 				// Handle revealed votes data
 				if (sessionData.revealedVotes) {
 					setRevealedVotes(sessionData.revealedVotes)
@@ -175,7 +185,13 @@ export default function PlanningPokerSession() {
 				}
 			}
 		}
-	}, [sessionData, sessionVotes, sessionVotesRevealed, sessionParticipants, sessionIsLocked])
+	}, [
+		sessionData,
+		sessionVotes,
+		sessionVotesRevealed,
+		sessionParticipants,
+		sessionIsLocked,
+	])
 
 	// Update connection status and handle session errors
 	useEffect(() => {
@@ -462,7 +478,8 @@ export default function PlanningPokerSession() {
 		}
 	}
 
-	const voteOptions = ['1', '2', '3', '5', '8', '13', '21', '?', '☕']
+	const defaultVoteOptions = ['1', '2', '3', '5', '8', '13', '21', '?', '☕']
+	const voteOptions = sessionCustomOptions || defaultVoteOptions
 
 	// Calculate vote statistics
 	const calculateVoteStatistics = () => {
@@ -474,18 +491,20 @@ export default function PlanningPokerSession() {
 			votes = revealedVotes.map((vote) => vote.vote)
 		} else {
 			// Fallback to sessionVotes object
-			votes = Object.values(sessionVotes).filter(vote => vote !== undefined && vote !== null)
+			votes = Object.values(sessionVotes).filter(
+				(vote) => vote !== undefined && vote !== null,
+			)
 		}
 
 		if (votes.length === 0) return null
 
 		// Count votes by value
 		const voteDistribution: Record<string, number> = {}
-		votes.forEach(vote => {
+		votes.forEach((vote) => {
 			voteDistribution[vote] = (voteDistribution[vote] || 0) + 1
 		})
 
-		// Calculate numeric statistics
+		// Calculate numeric statistics for average (only numeric votes)
 		const numericVotes = votes
 			.filter((vote) => !isNaN(Number(vote)) && vote !== '?' && vote !== '☕')
 			.map((vote) => Number(vote))
@@ -493,13 +512,25 @@ export default function PlanningPokerSession() {
 		let average = null
 		let agreement = 0
 
+		// Calculate average only from numeric votes
 		if (numericVotes.length > 0) {
 			const sum = numericVotes.reduce((acc, vote) => acc + vote, 0)
 			average = Math.round((sum / numericVotes.length) * 10) / 10
+		}
 
-			// Calculate agreement (percentage of votes that are the same)
-			const mostCommonVoteCount = Math.max(...Object.values(voteDistribution))
-			agreement = Math.round((mostCommonVoteCount / votes.length) * 100)
+		// Calculate agreement from all votes except uncertainty markers (?, ☕)
+		const agreementVotes = votes.filter((vote) => vote !== '?' && vote !== '☕')
+		if (agreementVotes.length > 0) {
+			const agreementDistribution: Record<string, number> = {}
+			agreementVotes.forEach((vote) => {
+				agreementDistribution[vote] = (agreementDistribution[vote] || 0) + 1
+			})
+			const mostCommonVoteCount = Math.max(
+				...Object.values(agreementDistribution),
+			)
+			agreement = Math.round(
+				(mostCommonVoteCount / agreementVotes.length) * 100,
+			)
 		}
 
 		// Find max vote count for scaling bars
@@ -585,7 +616,7 @@ export default function PlanningPokerSession() {
 
 				{/* Participants List with Vote Cards */}
 				<div className="mb-8">
-					<div className="mb-4 flex min-h-[2.5rem] items-center justify-between">
+					<div className="mb-6 flex min-h-[2.5rem] items-center justify-between">
 						<h2 className="text-xl font-semibold">Participants</h2>
 						{isOwner && (
 							<div className="flex h-10 items-center gap-2">
@@ -601,7 +632,7 @@ export default function PlanningPokerSession() {
 						)}
 					</div>
 
-					<div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+					<div className="grid grid-cols-4 gap-4 sm:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6">
 						{sessionParticipants
 							.sort((a, b) => {
 								// Current user always first
@@ -740,78 +771,106 @@ export default function PlanningPokerSession() {
 					{/* Vote Results & Statistics */}
 					{sessionVotesRevealed && voteStats && (
 						<div className="mt-8">
-							<div className="bg-muted/30 rounded-lg border p-6">
+							<div className="bg-muted/50 border-border rounded-lg border p-6 text-center">
 								<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 									{/* Vote Distribution - Left side (2/3) */}
 									<div className="lg:col-span-2">
-										<h3 className="mb-4 text-lg font-semibold">Vote Distribution</h3>
+										<h3 className="mb-4 text-lg font-semibold">
+											Vote Distribution
+										</h3>
 										<div className="flex items-end justify-start gap-2 sm:gap-3">
 											{(() => {
 												const votedOptions = voteOptions
-													.filter(option => voteStats.distribution[option] > 0)
-													.sort((a, b) => (voteStats.distribution[b] || 0) - (voteStats.distribution[a] || 0))
-												
+													.filter(
+														(option) => voteStats.distribution[option] > 0,
+													)
+													.sort(
+														(a, b) =>
+															(voteStats.distribution[b] || 0) -
+															(voteStats.distribution[a] || 0),
+													)
+
 												const top5Options = votedOptions.slice(0, 5)
 												const remainingOptions = votedOptions.slice(5)
-												
+
 												// Calculate Others count
-												const othersCount = remainingOptions.reduce((sum, option) => 
-													sum + (voteStats.distribution[option] || 0), 0
+												const othersCount = remainingOptions.reduce(
+													(sum, option) =>
+														sum + (voteStats.distribution[option] || 0),
+													0,
 												)
-												
+
 												// Create display options array
 												const displayOptions = [...top5Options]
 												if (othersCount > 0) {
 													displayOptions.push('Others')
 												}
-												
-												// Check if there's a clear winner (not all votes are equal)
-												const hasUniqueWinner = votedOptions.length > 1 && 
-													(voteStats.distribution[votedOptions[0]] || 0) > (voteStats.distribution[votedOptions[1]] || 0)
-												
-												// Color scheme for bars (blue for most voted only if there's a clear winner)
-												const getBarColor = (index: number, isOthers: boolean) => {
+
+												// Check if there's a clear winner or only one option voted
+												const hasUniqueWinner =
+													votedOptions.length === 1 ||
+													(votedOptions.length > 1 &&
+														(voteStats.distribution[votedOptions[0]] || 0) >
+															(voteStats.distribution[votedOptions[1]] || 0))
+
+												// Color scheme for bars (blue for most voted or single option)
+												const getBarColor = (
+													index: number,
+													isOthers: boolean,
+												) => {
 													if (index === 0 && !isOthers && hasUniqueWinner) {
-														return 'bg-blue-500' // Most voted - blue (only if clear winner)
+														return 'bg-blue-500' // Most voted or single option - blue
 													}
 													return 'bg-gray-400' // All others - gray
 												}
-												
-												const getCardStyle = (index: number, isOthers: boolean) => {
+
+												const getCardStyle = (
+													index: number,
+													isOthers: boolean,
+												) => {
 													if (index === 0 && !isOthers && hasUniqueWinner) {
-														return 'border-blue-600 bg-blue-500 text-white' // Most voted - blue (only if clear winner)
+														return 'border-blue-600 bg-blue-500 text-white' // Most voted or single option - blue
 													}
 													return 'border-gray-300 bg-gray-100' // All others - gray
 												}
-												
+
 												return displayOptions.map((option, index) => {
-													const count = option === 'Others' ? othersCount : (voteStats.distribution[option] || 0)
-													const percentage = voteStats.maxVoteCount > 0 
-														? (count / voteStats.maxVoteCount) * 100 
-														: 0
+													const count =
+														option === 'Others'
+															? othersCount
+															: voteStats.distribution[option] || 0
+													const percentage =
+														voteStats.maxVoteCount > 0
+															? (count / voteStats.maxVoteCount) * 100
+															: 0
 													const isOthers = option === 'Others'
-													
+
 													return (
-														<div key={option} className="flex flex-col items-center">
+														<div
+															key={option}
+															className="flex flex-col items-center"
+														>
 															{/* Bar visualization */}
 															<div className="mb-2 flex h-32 items-end">
 																{/* Bar background container */}
-																<div className="bg-muted relative w-10 h-full rounded overflow-hidden sm:w-12 md:w-14">
+																<div className="bg-muted relative h-full w-10 overflow-hidden rounded sm:w-12 md:w-14">
 																	{/* Actual bar */}
-																	<div 
+																	<div
 																		className={`absolute bottom-0 w-full rounded-t transition-all duration-500 ${getBarColor(index, isOthers)}`}
 																		style={{ height: `${percentage}%` }}
 																	/>
 																</div>
 															</div>
-															
+
 															{/* Vote value */}
-															<div className={`border-2 mb-1 flex h-10 w-10 items-center justify-center rounded sm:h-12 sm:w-12 md:h-14 md:w-14 ${getCardStyle(index, isOthers)}`}>
+															<div
+																className={`mb-1 flex h-10 w-10 items-center justify-center rounded border-2 sm:h-12 sm:w-12 md:h-14 md:w-14 ${getCardStyle(index, isOthers)}`}
+															>
 																<span className="text-base font-semibold sm:text-lg">
 																	{option === 'Others' ? '...' : option}
 																</span>
 															</div>
-															
+
 															{/* Vote count */}
 															<div className="text-muted-foreground mt-1 text-xs">
 																{count} {count === 1 ? 'Vote' : 'Votes'}
@@ -822,18 +881,24 @@ export default function PlanningPokerSession() {
 											})()}
 										</div>
 									</div>
-									
+
 									{/* Statistics - Right side (1/3) */}
-									<div className="flex flex-col items-center justify-center border-t pt-6 lg:border-l lg:border-t-0 lg:pt-0 lg:pl-6">
+									<div className="border-border flex flex-col items-center justify-center border-t pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
 										{voteStats.average !== null && (
 											<div className="mb-6 text-center">
-												<div className="text-muted-foreground text-sm">Average:</div>
-												<div className="text-4xl font-bold">{voteStats.average}</div>
+												<div className="text-muted-foreground text-sm">
+													Average:
+												</div>
+												<div className="text-4xl font-bold">
+													{voteStats.average}
+												</div>
 											</div>
 										)}
-										
+
 										<div className="text-center">
-											<div className="text-muted-foreground mb-2 text-sm">Agreement:</div>
+											<div className="text-muted-foreground mb-2 text-sm">
+												Agreement:
+											</div>
 											<div className="flex flex-col items-center gap-2">
 												<div className="relative h-16 w-16">
 													<svg className="h-16 w-16 -rotate-90">
@@ -861,13 +926,16 @@ export default function PlanningPokerSession() {
 														<span className="text-lg">🤝</span>
 													</div>
 												</div>
-												<span className="text-2xl font-semibold">{voteStats.agreement}%</span>
+												<span className="text-2xl font-semibold">
+													{voteStats.agreement}%
+												</span>
 											</div>
 										</div>
-										
+
 										{voteStats.numericCount < voteStats.totalCount && (
 											<div className="text-muted-foreground mt-4 text-xs">
-												{voteStats.numericCount}/{voteStats.totalCount} numeric votes
+												{voteStats.numericCount}/{voteStats.totalCount} numeric
+												votes
 											</div>
 										)}
 									</div>
@@ -891,6 +959,28 @@ export default function PlanningPokerSession() {
 								As the session owner, you manage the voting process but don't
 								vote yourself. Use the controls below to manage your session.
 							</p>
+
+							{/* Current Vote Options Display */}
+							{sessionCustomOptions && (
+								<div className="mb-6">
+									<h3 className="mb-2 text-sm font-medium">
+										Vote Options for this Session:
+									</h3>
+									<div className="flex flex-wrap justify-center gap-1">
+										{sessionCustomOptions.map((option, index) => (
+											<span
+												key={index}
+												className="bg-primary/10 text-primary rounded px-2 py-1 text-xs"
+											>
+												{option}
+											</span>
+										))}
+									</div>
+									<p className="text-muted-foreground mt-2 text-xs">
+										Custom vote options were set when this session was created.
+									</p>
+								</div>
+							)}
 
 							{/* Owner Action Buttons */}
 							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
