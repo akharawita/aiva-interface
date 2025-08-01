@@ -5,7 +5,7 @@
   "functions": {
     "index.js": {
       "includeFiles": "build/**,server-build/**,prisma/**",
-      "runtime": "nodejs22.x"
+      "runtime": "nodejs20.x"
     }
   },
   "rewrites": [
