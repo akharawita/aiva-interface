@@ -1,16 +1,14 @@
 [phases.setup]
-nixPkgs = ['nodejs_22', 'npm-9_x']
+nixPkgs = ['nodejs_20', 'npm-9_x']
 
 [phases.install]  
 cmds = ['npm ci']
 
 [phases.build]
 cmds = [
-  'mkdir -p data',
-  'mkdir -p prisma',
   'npm run build',
   'npx prisma generate'
 ]
 
 [start]
-cmd = 'node scripts/start-railway.js'
+cmd = 'npm start'
