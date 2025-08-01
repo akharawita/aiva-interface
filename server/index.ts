@@ -10,7 +10,6 @@ import rateLimit from 'express-rate-limit'
 import getPort, { portNumbers } from 'get-port'
 import morgan from 'morgan'
 import { type ServerBuild } from 'react-router'
-import { webSocketManager } from '../app/utils/websocket.server.js'
 
 const MODE = process.env.NODE_ENV ?? 'development'
 const IS_PROD = MODE === 'production'
@@ -253,8 +252,6 @@ ${styleText('bold', 'Press Ctrl+C to stop')}
 	)
 })
 
-// Initialize WebSocket server
-webSocketManager.initialize(server)
 
 closeWithGrace(async ({ err }) => {
 	await new Promise((resolve, reject) => {

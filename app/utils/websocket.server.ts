@@ -1,6 +1,5 @@
 import { type Server } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
-import { PlanningPokerSessionManager } from './planning-poker.server.ts'
 
 export interface PlanningPokerWebSocketMessage {
 	type: 
@@ -54,35 +53,8 @@ class WebSocketManager {
 
 	private handleMessage(ws: WebSocket, message: any) {
 		console.log('📨 Received WebSocket message:', message)
-		if (message.type === 'join_session' && message.sessionCode && message.participantName) {
-			// Add WebSocket connection
-			this.addConnection(message.sessionCode, ws)
-			console.log(`👋 Client joined WebSocket session: ${message.sessionCode}`)
-			console.log(`📊 Total connections for session ${message.sessionCode}:`, this.connections.get(message.sessionCode)?.size || 0)
-			
-			// Verify session exists using the same method as route loader
-			const session = PlanningPokerSessionManager.getSession(message.sessionCode)
-			if (session) {
-				console.log(`✅ WebSocket verified session ${message.sessionCode} exists with ${session.participants.length} participants`)
-				
-				// Register participant in planning poker session with broadcasting enabled
-				const result = PlanningPokerSessionManager.connectParticipantWebSocket(
-					message.sessionCode,
-					message.participantName,
-					`ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-				)
-				
-				if (result.success) {
-					console.log(`✅ Participant ${message.participantName} registered in planning poker session ${message.sessionCode}`)
-				} else {
-					console.log(`❌ Failed to register participant ${message.participantName} in session ${message.sessionCode}`)
-				}
-			} else {
-				console.log(`❌ WebSocket could not find session ${message.sessionCode}`)
-			}
-		} else {
-			console.log('❓ Unknown message type or missing required fields:', message)
-		}
+		// Handle other WebSocket messages here if needed
+		console.log('❓ Unknown message type:', message)
 	}
 
 	private addConnection(sessionCode: string, ws: WebSocket) {

@@ -97,5 +97,3 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 	})
 }
 
-// Re-export the broadcaster function for compatibility
-export { broadcastSSEUpdate } from '#app/utils/sse-broadcaster.server.ts'

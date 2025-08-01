@@ -1,5 +1,4 @@
 import { prisma } from './db.server.ts'
-import { broadcastToSession } from './websocket.server.ts'
 import { broadcastSSEUpdate } from './sse-broadcaster.server.ts'
 import { addHours, isAfter } from 'date-fns'
 
@@ -64,9 +63,6 @@ function generateParticipantId(): string {
 	return `participant_${Math.random().toString(36).substring(2, 9)}`
 }
 
-function generateStoryId(): string {
-	return `story_${Math.random().toString(36).substring(2, 9)}`
-}
 
 function isSessionExpired(session: PlanningPokerSession): boolean {
 	const expirationTime = addHours(session.lastUpdated, 2)
@@ -180,26 +176,8 @@ export class PlanningPokerSessionManager {
 		// Update session activity timestamp
 		session.lastUpdated = new Date()
 
-		// Broadcast both WebSocket and SSE updates when a participant joins
+		// Broadcast SSE updates when a participant joins
 		if (shouldBroadcast && isNewParticipant) {
-			console.log(`Broadcasting participant joined: ${participant.name} to session ${sessionCode}`)
-			
-			// WebSocket broadcast (legacy)
-			broadcastToSession(sessionCode, {
-				type: 'participant_joined',
-				sessionCode,
-				data: {
-					participant: {
-						id: participant.id,
-						name: participant.name,
-						joinedAt: participant.joinedAt,
-						isConnected: participant.isConnected,
-					},
-					participantCount: session.participants.length,
-				},
-			})
-
-			// SSE broadcast for real-time updates
 			console.log(`🔥 Broadcasting SSE participant joined: ${participant.name} in session ${sessionCode}`)
 			broadcastSSEUpdate(sessionCode, {
 				type: 'participant_joined',
@@ -233,20 +211,7 @@ export class PlanningPokerSessionManager {
 			delete session.votes[participantId]
 		}
 
-		// Broadcast participant left event via WebSocket (legacy)
-		broadcastToSession(sessionCode, {
-			type: 'participant_left',
-			sessionCode,
-			data: {
-				participant: {
-					id: removedParticipant.id,
-					name: removedParticipant.name,
-				},
-				participantCount: session.participants.length,
-			},
-		})
-
-		// Broadcast participant left event via SSE for real-time updates
+		// Broadcast participant left event via SSE
 		console.log(`🔥 Broadcasting SSE participant left: ${removedParticipant.name} in session ${sessionCode}`)
 		broadcastSSEUpdate(sessionCode, {
 			type: 'participant_left',
@@ -328,16 +293,7 @@ export class PlanningPokerSessionManager {
 		session.isLocked = !session.isLocked
 		session.lastUpdated = new Date() // Update activity timestamp
 
-		// Broadcast lock status change via WebSocket (legacy)
-		broadcastToSession(sessionCode, {
-			type: session.isLocked ? 'session_locked' : 'session_unlocked',
-			sessionCode,
-			data: {
-				isLocked: session.isLocked,
-			},
-		})
-
-		// Broadcast lock status change via SSE for real-time updates
+		// Broadcast lock status change via SSE
 		const lockType = session.isLocked ? 'session_locked' : 'session_unlocked'
 		console.log(`🔥 Broadcasting SSE ${lockType} for session ${sessionCode}`)
 		broadcastSSEUpdate(sessionCode, {
@@ -427,69 +383,6 @@ export class PlanningPokerSessionManager {
 		}
 	}
 
-	static connectParticipantWebSocket(
-		sessionCode: string,
-		participantName: string,
-		connectionId: string
-	): { success: boolean; isNewParticipant?: boolean } {
-		console.log(`Connecting WebSocket for participant: ${participantName} in session: ${sessionCode}`)
-		console.log(`Available sessions for WebSocket:`, Array.from(activeSessions.keys()))
-		console.log(`Session map size:`, activeSessions.size)
-		const session = activeSessions.get(sessionCode)
-		if (!session) {
-			console.log(`Session ${sessionCode} not found for WebSocket connection`)
-			console.log(`Trying uppercase:`, activeSessions.get(sessionCode.toUpperCase()))
-			return { success: false }
-		}
-
-		// Find existing participant
-		let participant = session.participants.find(p => p.name === participantName)
-		let isNewParticipant = false
-
-		if (!participant) {
-			// This is a new participant connecting via WebSocket (shouldn't happen in normal flow)
-			participant = {
-				id: generateParticipantId(),
-				name: participantName,
-				connectionId,
-				joinedAt: new Date(),
-				isConnected: true,
-			}
-			session.participants.push(participant)
-			isNewParticipant = true
-			console.log(`New participant ${participantName} added via WebSocket`)
-		} else {
-			// Update existing participant with connection info
-			participant.connectionId = connectionId
-			participant.isConnected = true
-			console.log(`Existing participant ${participantName} connected via WebSocket`)
-		}
-
-		// Add connection to session
-		if (!session.connections.includes(connectionId)) {
-			session.connections.push(connectionId)
-		}
-
-		// Broadcast if this is a new participant
-		if (isNewParticipant) {
-			console.log(`Broadcasting new participant joined: ${participant.name}`)
-			broadcastToSession(sessionCode, {
-				type: 'participant_joined',
-				sessionCode,
-				data: {
-					participant: {
-						id: participant.id,
-						name: participant.name,
-						joinedAt: participant.joinedAt,
-						isConnected: participant.isConnected,
-					},
-					participantCount: session.participants.length,
-				},
-			})
-		}
-
-		return { success: true, isNewParticipant }
-	}
 
 	static submitVote(
 		sessionCode: string,
@@ -517,22 +410,8 @@ export class PlanningPokerSessionManager {
 		console.log(`🗳️ Session votes after update:`, session.votes)
 		console.log(`🗳️ Vote count:`, Object.keys(session.votes).length)
 
-		// Broadcast WebSocket event (legacy)
-		console.log(`🚀 Broadcasting vote_submitted for ${participant.name} in session ${sessionCode}`)
-		broadcastToSession(sessionCode, {
-			type: 'vote_submitted',
-			sessionCode,
-			data: {
-				participantId,
-				participantName: participant.name,
-				hasVoted: true,
-				voteCount: Object.keys(session.votes).length,
-				totalParticipants: session.participants.length,
-			},
-		})
-
 		// Broadcast SSE update
-		console.log(`🔥 About to call broadcastSSEUpdate for session: ${sessionCode}`)
+		console.log(`🔥 Broadcasting SSE vote_submitted for ${participant.name} in session ${sessionCode}`)
 		broadcastSSEUpdate(sessionCode, {
 			type: 'vote_submitted',
 			participants: session.participants,
@@ -541,7 +420,6 @@ export class PlanningPokerSessionManager {
 			voteCount: Object.keys(session.votes).length,
 			participantName: participant.name,
 		})
-		console.log(`🔥 broadcastSSEUpdate call completed`)
 
 		return { success: true }
 	}
@@ -563,17 +441,6 @@ export class PlanningPokerSessionManager {
 		session.votesRevealed = false
 		session.lastUpdated = new Date() // Update activity timestamp
 		console.log(`Votes reset by ${ownerName} in session ${sessionCode}`)
-
-		// Broadcast WebSocket event (legacy)
-		broadcastToSession(sessionCode, {
-			type: 'votes_reset',
-			sessionCode,
-			data: {
-				voteCount: 0,
-				totalParticipants: session.participants.length,
-				votesRevealed: false,
-			},
-		})
 
 		// Broadcast SSE update
 		broadcastSSEUpdate(sessionCode, {
@@ -614,16 +481,6 @@ export class PlanningPokerSessionManager {
 		})
 
 		console.log(`Votes revealed by ${ownerName} in session ${sessionCode}`)
-
-		// Broadcast WebSocket event (legacy)
-		broadcastToSession(sessionCode, {
-			type: 'votes_revealed',
-			sessionCode,
-			data: {
-				votes: votesWithNames,
-				votesRevealed: true,
-			},
-		})
 
 		// Broadcast SSE update
 		broadcastSSEUpdate(sessionCode, {
