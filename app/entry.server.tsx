@@ -19,8 +19,8 @@ import { makeTimings } from './utils/timing.server.ts'
 
 export const streamTimeout = 5000
 
-init()
-global.ENV = getEnv()
+// init() // Disabled for debugging
+global.ENV = { MODE: 'production', SENTRY_DSN: '', ALLOW_INDEXING: 'true' }
 
 const MODE = process.env.NODE_ENV ?? 'development'
 
