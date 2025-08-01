@@ -35,10 +35,11 @@ if (process.env.NODE_ENV === 'production') {
 		try {
 			const { execSync } = await import('node:child_process')
 			// Set DATABASE_URL for migration if not already set
-			process.env.DATABASE_URL = process.env.DATABASE_URL || 'file:./data/data.db?connection_limit=1'
-			execSync('npx prisma migrate deploy', { 
+			process.env.DATABASE_URL =
+				process.env.DATABASE_URL || 'file:./data/data.db?connection_limit=1'
+			execSync('npx prisma migrate deploy', {
 				stdio: 'inherit',
-				env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+				env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL },
 			})
 			console.log('✅ Database migrations complete')
 		} catch (error) {
