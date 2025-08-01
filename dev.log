@@ -1,0 +1,30 @@
+/bin/sh: tsx: command not found
+file:///Users/akharawitaryakom/Documents/Akhara-Projects/affilate-interface/node_modules/execa/lib/return/final-error.js:6
+	return new ErrorClass(message, options);
+	       ^
+
+ExecaError: Command failed with exit code 127: 'tsx watch --clear-screen=false --ignore ".cache/**" --ignore "app/**" --ignore "vite.config.ts.timestamp-*" --ignore "build/**" --ignore "node_modules/**" --inspect ./index.js'
+    at getFinalError (file:///Users/akharawitaryakom/Documents/Akhara-Projects/affilate-interface/node_modules/execa/lib/return/final-error.js:6:9)
+    at makeError (file:///Users/akharawitaryakom/Documents/Akhara-Projects/affilate-interface/node_modules/execa/lib/return/result.js:108:16)
+    at getAsyncResult (file:///Users/akharawitaryakom/Documents/Akhara-Projects/affilate-interface/node_modules/execa/lib/methods/main-async.js:168:4)
+    at handlePromise (file:///Users/akharawitaryakom/Documents/Akhara-Projects/affilate-interface/node_modules/execa/lib/methods/main-async.js:151:17)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  shortMessage: `Command failed with exit code 127: 'tsx watch --clear-screen=false --ignore ".cache/**" --ignore "app/**" --ignore "vite.config.ts.timestamp-*" --ignore "build/**" --ignore "node_modules/**" --inspect ./index.js'`,
+  command: 'tsx watch --clear-screen=false --ignore ".cache/**" --ignore "app/**" --ignore "vite.config.ts.timestamp-*" --ignore "build/**" --ignore "node_modules/**" --inspect ./index.js',
+  escapedCommand: `'tsx watch --clear-screen=false --ignore ".cache/**" --ignore "app/**" --ignore "vite.config.ts.timestamp-*" --ignore "build/**" --ignore "node_modules/**" --inspect ./index.js'`,
+  cwd: '/Users/akharawitaryakom/Documents/Akhara-Projects/affilate-interface',
+  durationMs: 9.1305,
+  failed: true,
+  timedOut: false,
+  isCanceled: false,
+  isGracefullyCanceled: false,
+  isTerminated: false,
+  isMaxBuffer: false,
+  isForcefullyTerminated: false,
+  exitCode: 127,
+  stdio: [ undefined, undefined, undefined ],
+  ipcOutput: [],
+  pipedFrom: []
+}
+
+Node.js v22.12.0
