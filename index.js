@@ -17,9 +17,9 @@ sourceMapSupport.install({
 	},
 })
 
-// Setup database for Railway production
-if (process.env.NODE_ENV === 'production' && process.env.RAILWAY_ENVIRONMENT) {
-	console.log('🚂 Railway detected - setting up database...')
+// Setup database for production
+if (process.env.NODE_ENV === 'production') {
+	console.log('🚀 Production mode - setting up database...')
 
 	// Ensure data directory exists
 	const dataDir = path.join(process.cwd(), 'data')
@@ -28,7 +28,26 @@ if (process.env.NODE_ENV === 'production' && process.env.RAILWAY_ENVIRONMENT) {
 		console.log('📁 Created data directory')
 	}
 
-	console.log('📍 Database setup complete (migrations handled by build)')
+	// Check if database exists, if not run migrations
+	const dbPath = path.join(dataDir, 'data.db')
+	if (!fs.existsSync(dbPath)) {
+		console.log('🗄️ Database not found, running migrations...')
+		try {
+			const { execSync } = await import('node:child_process')
+			// Set DATABASE_URL for migration if not already set
+			process.env.DATABASE_URL = process.env.DATABASE_URL || 'file:./data/data.db'
+			execSync('npx prisma migrate deploy', { 
+				stdio: 'inherit',
+				env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+			})
+			console.log('✅ Database migrations complete')
+		} catch (error) {
+			console.error('⚠️ Migration failed:', error.message)
+			console.log('⚠️ Continuing without migrations...')
+		}
+	} else {
+		console.log('✅ Database already exists')
+	}
 }
 
 if (process.env.MOCKS === 'true' && process.env.NODE_ENV !== 'production') {
