@@ -464,8 +464,8 @@ export default function PlanningPokerSession() {
 
 	const voteOptions = ['1', '2', '3', '5', '8', '13', '21', '?', '☕']
 
-	// Calculate average of revealed votes (excluding non-numeric votes)
-	const calculateAverage = () => {
+	// Calculate vote statistics
+	const calculateVoteStatistics = () => {
 		if (!sessionVotesRevealed) return null
 
 		// Use revealedVotes if available, otherwise fall back to sessionVotes
@@ -479,23 +479,43 @@ export default function PlanningPokerSession() {
 
 		if (votes.length === 0) return null
 
+		// Count votes by value
+		const voteDistribution: Record<string, number> = {}
+		votes.forEach(vote => {
+			voteDistribution[vote] = (voteDistribution[vote] || 0) + 1
+		})
+
+		// Calculate numeric statistics
 		const numericVotes = votes
 			.filter((vote) => !isNaN(Number(vote)) && vote !== '?' && vote !== '☕')
 			.map((vote) => Number(vote))
 
-		if (numericVotes.length === 0) return null
+		let average = null
+		let agreement = 0
 
-		const sum = numericVotes.reduce((acc, vote) => acc + vote, 0)
-		const average = sum / numericVotes.length
+		if (numericVotes.length > 0) {
+			const sum = numericVotes.reduce((acc, vote) => acc + vote, 0)
+			average = Math.round((sum / numericVotes.length) * 10) / 10
+
+			// Calculate agreement (percentage of votes that are the same)
+			const mostCommonVoteCount = Math.max(...Object.values(voteDistribution))
+			agreement = Math.round((mostCommonVoteCount / votes.length) * 100)
+		}
+
+		// Find max vote count for scaling bars
+		const maxVoteCount = Math.max(...Object.values(voteDistribution))
 
 		return {
-			average: Math.round(average * 10) / 10, // Round to 1 decimal place
-			count: numericVotes.length,
-			total: votes.length,
+			average,
+			agreement,
+			distribution: voteDistribution,
+			maxVoteCount,
+			numericCount: numericVotes.length,
+			totalCount: votes.length,
 		}
 	}
 
-	const averageData = calculateAverage()
+	const voteStats = calculateVoteStatistics()
 
 	return (
 		<div className="container mx-auto px-4 py-8">
@@ -717,15 +737,140 @@ export default function PlanningPokerSession() {
 							})}
 					</div>
 
-					{/* Vote Results & Average */}
-					{sessionVotesRevealed && averageData && (
-						<div className="mt-4">
-							<div className="p-4 text-center">
-								<div className="text-primary mb-1 text-2xl font-bold">
-									Average: {averageData.average}
-								</div>
-								<div className="text-muted-foreground text-sm">
-									{averageData.count}/{averageData.total} numeric votes
+					{/* Vote Results & Statistics */}
+					{sessionVotesRevealed && voteStats && (
+						<div className="mt-8">
+							<div className="bg-muted/30 rounded-lg border p-6">
+								<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+									{/* Vote Distribution - Left side (2/3) */}
+									<div className="lg:col-span-2">
+										<h3 className="mb-4 text-lg font-semibold">Vote Distribution</h3>
+										<div className="flex items-end justify-start gap-2 sm:gap-3">
+											{(() => {
+												const votedOptions = voteOptions
+													.filter(option => voteStats.distribution[option] > 0)
+													.sort((a, b) => (voteStats.distribution[b] || 0) - (voteStats.distribution[a] || 0))
+												
+												const top5Options = votedOptions.slice(0, 5)
+												const remainingOptions = votedOptions.slice(5)
+												
+												// Calculate Others count
+												const othersCount = remainingOptions.reduce((sum, option) => 
+													sum + (voteStats.distribution[option] || 0), 0
+												)
+												
+												// Create display options array
+												const displayOptions = [...top5Options]
+												if (othersCount > 0) {
+													displayOptions.push('Others')
+												}
+												
+												// Check if there's a clear winner (not all votes are equal)
+												const hasUniqueWinner = votedOptions.length > 1 && 
+													(voteStats.distribution[votedOptions[0]] || 0) > (voteStats.distribution[votedOptions[1]] || 0)
+												
+												// Color scheme for bars (blue for most voted only if there's a clear winner)
+												const getBarColor = (index: number, isOthers: boolean) => {
+													if (index === 0 && !isOthers && hasUniqueWinner) {
+														return 'bg-blue-500' // Most voted - blue (only if clear winner)
+													}
+													return 'bg-gray-400' // All others - gray
+												}
+												
+												const getCardStyle = (index: number, isOthers: boolean) => {
+													if (index === 0 && !isOthers && hasUniqueWinner) {
+														return 'border-blue-600 bg-blue-500 text-white' // Most voted - blue (only if clear winner)
+													}
+													return 'border-gray-300 bg-gray-100' // All others - gray
+												}
+												
+												return displayOptions.map((option, index) => {
+													const count = option === 'Others' ? othersCount : (voteStats.distribution[option] || 0)
+													const percentage = voteStats.maxVoteCount > 0 
+														? (count / voteStats.maxVoteCount) * 100 
+														: 0
+													const isOthers = option === 'Others'
+													
+													return (
+														<div key={option} className="flex flex-col items-center">
+															{/* Bar visualization */}
+															<div className="mb-2 flex h-32 items-end">
+																{/* Bar background container */}
+																<div className="bg-muted relative w-10 h-full rounded overflow-hidden sm:w-12 md:w-14">
+																	{/* Actual bar */}
+																	<div 
+																		className={`absolute bottom-0 w-full rounded-t transition-all duration-500 ${getBarColor(index, isOthers)}`}
+																		style={{ height: `${percentage}%` }}
+																	/>
+																</div>
+															</div>
+															
+															{/* Vote value */}
+															<div className={`border-2 mb-1 flex h-10 w-10 items-center justify-center rounded sm:h-12 sm:w-12 md:h-14 md:w-14 ${getCardStyle(index, isOthers)}`}>
+																<span className="text-base font-semibold sm:text-lg">
+																	{option === 'Others' ? '...' : option}
+																</span>
+															</div>
+															
+															{/* Vote count */}
+															<div className="text-muted-foreground mt-1 text-xs">
+																{count} {count === 1 ? 'Vote' : 'Votes'}
+															</div>
+														</div>
+													)
+												})
+											})()}
+										</div>
+									</div>
+									
+									{/* Statistics - Right side (1/3) */}
+									<div className="flex flex-col items-center justify-center border-t pt-6 lg:border-l lg:border-t-0 lg:pt-0 lg:pl-6">
+										{voteStats.average !== null && (
+											<div className="mb-6 text-center">
+												<div className="text-muted-foreground text-sm">Average:</div>
+												<div className="text-4xl font-bold">{voteStats.average}</div>
+											</div>
+										)}
+										
+										<div className="text-center">
+											<div className="text-muted-foreground mb-2 text-sm">Agreement:</div>
+											<div className="flex flex-col items-center gap-2">
+												<div className="relative h-16 w-16">
+													<svg className="h-16 w-16 -rotate-90">
+														<circle
+															cx="32"
+															cy="32"
+															r="28"
+															stroke="currentColor"
+															strokeWidth="8"
+															fill="none"
+															className="text-muted"
+														/>
+														<circle
+															cx="32"
+															cy="32"
+															r="28"
+															stroke="currentColor"
+															strokeWidth="8"
+															fill="none"
+															strokeDasharray={`${(voteStats.agreement / 100) * 176} 176`}
+															className="text-green-500 transition-all duration-700"
+														/>
+													</svg>
+													<div className="absolute inset-0 flex items-center justify-center">
+														<span className="text-lg">🤝</span>
+													</div>
+												</div>
+												<span className="text-2xl font-semibold">{voteStats.agreement}%</span>
+											</div>
+										</div>
+										
+										{voteStats.numericCount < voteStats.totalCount && (
+											<div className="text-muted-foreground mt-4 text-xs">
+												{voteStats.numericCount}/{voteStats.totalCount} numeric votes
+											</div>
+										)}
+									</div>
 								</div>
 							</div>
 						</div>
