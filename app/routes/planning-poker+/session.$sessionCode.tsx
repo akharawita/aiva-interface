@@ -5,6 +5,7 @@ import {
 import { Button } from '#app/components/ui/button.tsx'
 import { useSSE } from '#app/hooks/use-sse.ts'
 import { PlanningPokerSessionManager } from '#app/utils/planning-poker.server.ts'
+import { getVoteValueColor, getVoteValueBarColor } from '#app/utils/vote-value-colors.ts'
 import { useEffect, useState } from 'react'
 import {
 	data,
@@ -336,7 +337,7 @@ export default function PlanningPokerSession() {
 				throw new Error('Failed to toggle lock')
 			}
 
-			const result = await response.json()
+			const result = await response.json() as { isLocked: boolean }
 			console.log(`✅ Session ${result.isLocked ? 'locked' : 'unlocked'}`)
 		} catch (error) {
 			console.error('Toggle lock error:', error)
@@ -375,7 +376,7 @@ export default function PlanningPokerSession() {
 			})
 
 			if (!response.ok) {
-				const errorData = await response.json()
+				const errorData = await response.json() as { error?: string }
 				throw new Error(errorData.error || 'Failed to leave session')
 			}
 
@@ -414,7 +415,7 @@ export default function PlanningPokerSession() {
 			})
 
 			if (!response.ok) {
-				const errorData = await response.json()
+				const errorData = await response.json() as { error?: string }
 				throw new Error(errorData.error || 'Failed to kick participant')
 			}
 
@@ -649,7 +650,7 @@ export default function PlanningPokerSession() {
 								// Finally sort by nameuv tool install claude-monitor
 								return a.name.localeCompare(b.name)
 							})
-							.map((participant) => {
+							.map((participant, index) => {
 								const hasVoted = sessionVotes[participant.id]
 								const isCurrentUser = participant.id === participantId
 								const isParticipantOwner =
@@ -658,6 +659,7 @@ export default function PlanningPokerSession() {
 									revealedVotes?.find((v) => v.participantId === participant.id)
 										?.vote ||
 									(sessionVotesRevealed ? sessionVotes[participant.id] : null)
+								const participantColor = participantVote ? getVoteValueColor(participantVote) : null
 
 								return (
 									<div key={participant.id} className="relative">
@@ -739,8 +741,8 @@ export default function PlanningPokerSession() {
 												{/* Back of card (vote revealed state) */}
 												<div
 													className={`absolute inset-0 flex [transform:rotateY(180deg)] flex-col items-center justify-center rounded-xl border pt-4 pb-2 shadow-sm [backface-visibility:hidden] ${!participant.isConnected ? 'opacity-50' : ''} ${
-														sessionVotesRevealed && participantVote
-															? 'border-blue-600 bg-blue-500 text-white'
+														sessionVotesRevealed && participantVote && participantColor
+															? `${participantColor.border} ${participantColor.bg} ${participantColor.text}`
 															: isParticipantOwner
 																? 'border-primary/30 bg-primary/10'
 																: 'border-gray-300 bg-gray-100'
@@ -810,28 +812,33 @@ export default function PlanningPokerSession() {
 												const hasUniqueWinner =
 													votedOptions.length === 1 ||
 													(votedOptions.length > 1 &&
+														votedOptions[0] !== undefined &&
+														votedOptions[1] !== undefined &&
 														(voteStats.distribution[votedOptions[0]] || 0) >
 															(voteStats.distribution[votedOptions[1]] || 0))
 
-												// Color scheme for bars (blue for most voted or single option)
+												// Use unified color scheme for bars
 												const getBarColor = (
 													index: number,
 													isOthers: boolean,
+													option: string,
 												) => {
-													if (index === 0 && !isOthers && hasUniqueWinner) {
-														return 'bg-blue-500' // Most voted or single option - blue
+													if (isOthers) {
+														return 'bg-gray-400'
 													}
-													return 'bg-gray-400' // All others - gray
+													return getVoteValueBarColor(option)
 												}
 
 												const getCardStyle = (
 													index: number,
 													isOthers: boolean,
+													option: string,
 												) => {
-													if (index === 0 && !isOthers && hasUniqueWinner) {
-														return 'border-blue-600 bg-blue-500 text-white' // Most voted or single option - blue
+													if (isOthers) {
+														return 'border-gray-300 bg-gray-100'
 													}
-													return 'border-gray-300 bg-gray-100' // All others - gray
+													const color = getVoteValueColor(option)
+													return `${color.border} ${color.bg} ${color.text}`
 												}
 
 												return displayOptions.map((option, index) => {
@@ -856,7 +863,7 @@ export default function PlanningPokerSession() {
 																<div className="bg-muted relative h-full w-10 overflow-hidden rounded sm:w-12 md:w-14">
 																	{/* Actual bar */}
 																	<div
-																		className={`absolute bottom-0 w-full rounded-t transition-all duration-500 ${getBarColor(index, isOthers)}`}
+																		className={`absolute bottom-0 w-full rounded-t transition-all duration-500 ${getBarColor(index, isOthers, option)}`}
 																		style={{ height: `${percentage}%` }}
 																	/>
 																</div>
@@ -864,7 +871,7 @@ export default function PlanningPokerSession() {
 
 															{/* Vote value */}
 															<div
-																className={`mb-1 flex h-10 w-10 items-center justify-center rounded border-2 sm:h-12 sm:w-12 md:h-14 md:w-14 ${getCardStyle(index, isOthers)}`}
+																className={`mb-1 flex h-10 w-10 items-center justify-center rounded border-2 sm:h-12 sm:w-12 md:h-14 md:w-14 ${getCardStyle(index, isOthers, option)}`}
 															>
 																<span className="text-base font-semibold sm:text-lg">
 																	{option === 'Others' ? '...' : option}

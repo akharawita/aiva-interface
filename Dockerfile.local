@@ -1,0 +1,53 @@
+# syntax = docker/dockerfile:1
+
+# Local development Dockerfile without LiteFS
+ARG NODE_VERSION=22.12.0
+FROM node:${NODE_VERSION}-slim AS base
+
+WORKDIR /app
+ENV NODE_ENV="production"
+ARG YARN_VERSION=1.22.18
+RUN npm install -g yarn@$YARN_VERSION --force
+
+# Build stage
+FROM base AS build
+
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y build-essential node-gyp openssl pkg-config python-is-python3
+
+COPY .npmrc package-lock.json package.json yarn.lock ./
+RUN yarn install --frozen-lockfile --production=false
+
+COPY prisma .
+RUN npx prisma generate
+
+COPY . .
+RUN yarn run build
+
+# Final stage
+FROM base
+
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y ca-certificates openssl && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+COPY --from=build /app /app
+
+# Create data directory
+RUN mkdir -p /data
+VOLUME /data
+
+# Direct entrypoint without LiteFS
+WORKDIR /app
+EXPOSE 3000
+ENV DATABASE_FILENAME="sqlite.db"
+ENV DATABASE_PATH="/data/$DATABASE_FILENAME"
+ENV DATABASE_URL="file://$DATABASE_PATH"
+ENV CACHE_DATABASE_FILENAME="cache.db"
+ENV CACHE_DATABASE_PATH="/data/$CACHE_DATABASE_FILENAME"
+ENV PORT=3000
+
+# Simple startup script
+COPY docker-entrypoint-local.js .
+ENTRYPOINT ["node", "docker-entrypoint-local.js"]
+CMD ["yarn", "run", "start"]

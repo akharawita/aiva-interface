@@ -32,8 +32,14 @@ export default defineConfig((config) => ({
 		sourcemap: true,
 	},
 	server: {
+		host: true, // Allow external connections (needed for ngrok)
+		port: 3000, // Explicit port for ngrok tunneling
+		allowedHosts: ['bcad26fe549f.ngrok-free.app'], // Allow specific ngrok host
 		watch: {
 			ignored: ['**/playwright-report/**'],
+		},
+		hmr: {
+			port: 3001, // Use a different port for HMR to avoid conflicts
 		},
 	},
 	sentryConfig,
