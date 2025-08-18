@@ -668,7 +668,7 @@ export default function PlanningPokerSession() {
 											className={`absolute -top-3 left-1/2 z-10 -translate-x-1/2 transform rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${
 												isCurrentUser
 													? 'bg-primary text-primary-foreground border-primary'
-													: 'border-gray-300 bg-white'
+													: 'border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600'
 											} `}
 										>
 											<div className="flex items-center gap-1">

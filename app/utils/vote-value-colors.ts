@@ -1,5 +1,6 @@
 // Predefined colors for default vote values
 const defaultVoteColors: Record<string, { bg: string; border: string; text: string }> = {
+	'0.5': { bg: 'bg-orange-500', border: 'border-orange-600', text: 'text-white' },
 	'1': { bg: 'bg-purple-500', border: 'border-purple-600', text: 'text-white' },
 	'2': { bg: 'bg-indigo-500', border: 'border-indigo-600', text: 'text-white' },
 	'3': { bg: 'bg-blue-500', border: 'border-blue-600', text: 'text-white' },
