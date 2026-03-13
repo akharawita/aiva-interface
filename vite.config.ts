@@ -34,7 +34,9 @@ export default defineConfig((config) => ({
 	server: {
 		host: true, // Allow external connections (needed for ngrok)
 		port: 3000, // Explicit port for ngrok tunneling
-		allowedHosts: ['bcad26fe549f.ngrok-free.app'], // Allow specific ngrok host
+		allowedHosts: [
+			'6eff-2403-6200-8851-7679-1d1f-6c2f-860-ae01.ngrok-free.app',
+		], // Allow specific ngrok host
 		watch: {
 			ignored: ['**/playwright-report/**'],
 		},

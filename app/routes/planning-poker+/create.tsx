@@ -239,13 +239,13 @@ export default function CreateSession() {
 										</div>
 										<div className="flex-1">
 											<p className="text-sm font-medium">
-												Ready-to-use Fibonacci voting cards
+												Ready-to-use voting cards
 											</p>
 											<p className="text-muted-foreground text-xs mb-2">
 												Perfect for agile story point estimation
 											</p>
 											<div className="flex flex-wrap gap-1">
-												{['1', '2', '3', '5', '8', '13', '21', '?', '☕'].map((option) => (
+												{['1', '2', '3', '5', '8'].map((option) => (
 													<span key={option} className="bg-primary/10 text-primary rounded px-1.5 py-0.5 text-xs font-medium">
 														{option}
 													</span>
@@ -345,7 +345,7 @@ export default function CreateSession() {
 												errors={fields.customVoteOptions.errors}
 											/>
 											<p className="text-muted-foreground mt-2 text-xs">
-												Leave empty for default Fibonacci options (1,2,3,5,8,13,21,?,☕). 
+												Leave empty for default options (1,2,3,5,8). 
 												Enter comma-separated values. Max 10 options, 5 characters each.
 											</p>
 										</div>
