@@ -48,6 +48,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 				isLocked: session.isLocked,
 				voteCount: Object.keys(session.votes).length,
 				timestamp: Date.now(),
+				roundStartedAt: session.roundStartedAt,
 			}
 
 			const message = `data: ${JSON.stringify(initialData)}\n\n`

@@ -5,8 +5,11 @@ import {
 import { Button } from '#app/components/ui/button.tsx'
 import { useSSE } from '#app/hooks/use-sse.ts'
 import { PlanningPokerSessionManager } from '#app/utils/planning-poker.server.ts'
-import { getVoteValueColor, getVoteValueBarColor } from '#app/utils/vote-value-colors.ts'
-import { useEffect, useState } from 'react'
+import {
+	getVoteValueBarColor,
+	getVoteValueColor,
+} from '#app/utils/vote-value-colors.ts'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
 	data,
 	Link,
@@ -96,6 +99,22 @@ export default function PlanningPokerSession() {
 	const [isEndingSession, setIsEndingSession] = useState(false)
 	const [isShareCopied, setIsShareCopied] = useState(false)
 
+	// Random participant picker state
+	const [randomPickedParticipant, setRandomPickedParticipant] = useState<{
+		id: string
+		name: string
+		vote: string
+	} | null>(null)
+	const [isRandomPicking, setIsRandomPicking] = useState(false)
+	const [randomPickDisplay, setRandomPickDisplay] = useState<string | null>(
+		null,
+	)
+	const randomPickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+		null,
+	)
+	const [showPickOverlay, setShowPickOverlay] = useState(false)
+	const cleanupRef = useRef<(() => void) | null>(null)
+
 	// Real-time state management using polling
 	const [sessionVotes, setSessionVotes] = useState(session.votes)
 	const [sessionVotesRevealed, setSessionVotesRevealed] = useState(
@@ -118,6 +137,12 @@ export default function PlanningPokerSession() {
 	const [lastUpdate, setLastUpdate] = useState(Date.now())
 	const [realtimeStatus, setRealtimeStatus] = useState<string>('Connected')
 
+	// Timer state
+	const [roundStartedAt, setRoundStartedAt] = useState<number>(
+		session.roundStartedAt,
+	)
+	const [elapsedSeconds, setElapsedSeconds] = useState<number>(0)
+
 	// SSE for real-time updates
 	const {
 		data: sessionData,
@@ -138,10 +163,94 @@ export default function PlanningPokerSession() {
 			participantName: string
 			vote: string
 		}>
+		randomPick?: {
+			participantId: string
+			participantName: string
+			vote: string
+		}
+		roundStartedAt?: number
 	}>({
 		url: `/planning-poker/sse/${session.sessionCode}`,
 		enabled: true,
 	})
+
+	// Run random pick animation (triggered by SSE for all clients)
+	const runRandomPickAnimation = useCallback(
+		(picked: {
+			participantId: string
+			participantName: string
+			vote: string
+		}) => {
+			// Get all non-owner participant names for the cycling animation
+			const participantNames = sessionParticipants
+				.filter((p) => p.name !== session.ownerName)
+				.map((p) => p.name)
+
+			if (participantNames.length === 0) {
+				// No names to cycle through, just show the result directly
+				setRandomPickedParticipant({
+					id: picked.participantId,
+					name: picked.participantName,
+					vote: picked.vote,
+				})
+				setRandomPickDisplay(picked.participantName)
+				return
+			}
+
+			setIsRandomPicking(true)
+			setRandomPickedParticipant(null)
+			setShowPickOverlay(false)
+
+			// Clear any existing timeout
+			if (randomPickIntervalRef.current) {
+				clearTimeout(randomPickIntervalRef.current)
+			}
+
+			const totalCycles = 20
+			let cycleCount = 0
+
+			const runCycle = () => {
+				let displayName: string
+				if (cycleCount < totalCycles - 1) {
+					displayName =
+						participantNames[
+							Math.floor(Math.random() * participantNames.length)
+						]!
+				} else {
+					// Last cycle — land on the final pick
+					displayName = picked.participantName
+				}
+				setRandomPickDisplay(displayName)
+				cycleCount++
+
+				if (cycleCount >= totalCycles) {
+					randomPickIntervalRef.current = null
+					setRandomPickedParticipant({
+						id: picked.participantId,
+						name: picked.participantName,
+						vote: picked.vote,
+					})
+					setRandomPickDisplay(picked.participantName)
+					setIsRandomPicking(false)
+
+					// Show zoom overlay (confetti handled by useEffect)
+					setTimeout(() => {
+						setShowPickOverlay(true)
+					}, 200)
+
+					return
+				}
+
+				// Ease-out: starts fast (50ms), slows dramatically to ~800ms at the end
+				const progress = cycleCount / totalCycles
+				const delay = 50 + 750 * (progress * progress * progress)
+				randomPickIntervalRef.current = setTimeout(runCycle, delay)
+			}
+
+			runCycle()
+		},
+		[session.ownerName, sessionParticipants],
+	)
 
 	// Update state when SSE data changes
 	useEffect(() => {
@@ -151,7 +260,8 @@ export default function PlanningPokerSession() {
 				sessionData.votesRevealed !== sessionVotesRevealed ||
 				sessionData.participants.length !== sessionParticipants.length ||
 				(sessionData.isLocked !== undefined &&
-					sessionData.isLocked !== sessionIsLocked)
+					sessionData.isLocked !== sessionIsLocked) ||
+				sessionData.type === 'random_pick'
 
 			if (hasChanges) {
 				console.log(
@@ -173,16 +283,32 @@ export default function PlanningPokerSession() {
 					setSessionCustomOptions(sessionData.customVoteOptions)
 				}
 
+				// Update round timer
+				if (sessionData.roundStartedAt !== undefined) {
+					setRoundStartedAt(sessionData.roundStartedAt)
+				}
+
 				// Handle revealed votes data
 				if (sessionData.revealedVotes) {
 					setRevealedVotes(sessionData.revealedVotes)
 				} else if (!sessionData.votesRevealed) {
 					setRevealedVotes(null)
+					setRandomPickedParticipant(null)
+					setRandomPickDisplay(null)
+					setShowPickOverlay(false)
 				}
 
 				// Clear selected vote when votes are reset
 				if (sessionData.type === 'votes_reset') {
 					setSelectedVote(null)
+					setRandomPickedParticipant(null)
+					setRandomPickDisplay(null)
+					setShowPickOverlay(false)
+				}
+
+				// Handle random pick event from server
+				if (sessionData.type === 'random_pick' && sessionData.randomPick) {
+					runRandomPickAnimation(sessionData.randomPick)
 				}
 			}
 		}
@@ -192,7 +318,65 @@ export default function PlanningPokerSession() {
 		sessionVotesRevealed,
 		sessionParticipants,
 		sessionIsLocked,
+		runRandomPickAnimation,
 	])
+
+	// Continuous confetti while overlay is open
+	useEffect(() => {
+		if (!showPickOverlay) return
+
+		let cancelled = false
+
+		import('canvas-confetti').then((confettiModule) => {
+			if (cancelled) return
+			const confetti = confettiModule.default
+			const colors = ['#a855f7', '#ec4899', '#8b5cf6', '#f59e0b', '#10b981', '#3b82f6']
+
+			// Initial burst
+			confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors })
+
+			// Repeating confetti
+			const interval = setInterval(() => {
+				if (cancelled) return
+				confetti({
+					particleCount: 40,
+					spread: 80,
+					origin: { x: Math.random(), y: Math.random() * 0.4 },
+					colors,
+				})
+			}, 600)
+
+			// Store cleanup ref
+			const cleanup = () => {
+				cancelled = true
+				clearInterval(interval)
+			}
+			cleanupRef.current = cleanup
+		})
+
+		return () => {
+			cancelled = true
+			cleanupRef.current?.()
+		}
+	}, [showPickOverlay])
+
+	// Timer tick effect
+	useEffect(() => {
+		// If votes are revealed, freeze the timer
+		if (sessionVotesRevealed) {
+			return
+		}
+
+		const tick = () => {
+			const elapsed = Math.floor((Date.now() - roundStartedAt) / 1000)
+			setElapsedSeconds(Math.max(0, elapsed))
+		}
+
+		tick()
+		const intervalId = setInterval(tick, 1000)
+
+		return () => clearInterval(intervalId)
+	}, [roundStartedAt, sessionVotesRevealed])
 
 	// Update connection status and handle session errors
 	useEffect(() => {
@@ -210,6 +394,36 @@ export default function PlanningPokerSession() {
 			setRealtimeStatus('Connecting...')
 		}
 	}, [isConnected, sseError])
+
+	// Owner triggers random pick via API (broadcasts to all clients via SSE)
+	const handleRandomPick = useCallback(async () => {
+		try {
+			const response = await fetch('/planning-poker/random-pick', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					sessionCode: session.sessionCode,
+					ownerName: session.ownerName,
+				}),
+			})
+
+			if (!response.ok) {
+				throw new Error('Failed to random pick')
+			}
+		} catch (error) {
+			console.error('Random pick error:', error)
+			alert('Failed to random pick. Please try again.')
+		}
+	}, [session.sessionCode, session.ownerName])
+
+	// Cleanup timeout on unmount
+	useEffect(() => {
+		return () => {
+			if (randomPickIntervalRef.current) {
+				clearTimeout(randomPickIntervalRef.current)
+			}
+		}
+	}, [])
 
 	// Show error boundary if SSE indicates session expired/not found
 	if (
@@ -312,6 +526,9 @@ export default function PlanningPokerSession() {
 
 			console.log('✅ Votes reset')
 			setRevealedVotes(null)
+			setRandomPickedParticipant(null)
+			setRandomPickDisplay(null)
+			setShowPickOverlay(false)
 		} catch (error) {
 			console.error('Reset votes error:', error)
 			alert('Failed to reset votes. Please try again.')
@@ -337,7 +554,7 @@ export default function PlanningPokerSession() {
 				throw new Error('Failed to toggle lock')
 			}
 
-			const result = await response.json() as { isLocked: boolean }
+			const result = (await response.json()) as { isLocked: boolean }
 			console.log(`✅ Session ${result.isLocked ? 'locked' : 'unlocked'}`)
 		} catch (error) {
 			console.error('Toggle lock error:', error)
@@ -376,7 +593,7 @@ export default function PlanningPokerSession() {
 			})
 
 			if (!response.ok) {
-				const errorData = await response.json() as { error?: string }
+				const errorData = (await response.json()) as { error?: string }
 				throw new Error(errorData.error || 'Failed to leave session')
 			}
 
@@ -415,7 +632,7 @@ export default function PlanningPokerSession() {
 			})
 
 			if (!response.ok) {
-				const errorData = await response.json() as { error?: string }
+				const errorData = (await response.json()) as { error?: string }
 				throw new Error(errorData.error || 'Failed to kick participant')
 			}
 
@@ -479,7 +696,13 @@ export default function PlanningPokerSession() {
 		}
 	}
 
-	const defaultVoteOptions = ['1', '2', '3', '5', '8', '13', '21', '?', '☕']
+	const formatElapsedTime = (totalSeconds: number): string => {
+		const minutes = Math.floor(totalSeconds / 60)
+		const seconds = totalSeconds % 60
+		return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+	}
+
+	const defaultVoteOptions = ['0.5', '1', '2', '3', '5', '8']
 	const voteOptions = sessionCustomOptions || defaultVoteOptions
 
 	// Calculate vote statistics
@@ -606,6 +829,12 @@ export default function PlanningPokerSession() {
 								{voteCount}/{votingParticipantCount}
 							</span>
 						</div>
+						<div className="flex items-center gap-2">
+							<span className="font-medium">Time:</span>
+							<span className="font-mono text-sm">
+								{formatElapsedTime(elapsedSeconds)}
+							</span>
+						</div>
 						{sessionIsLocked && (
 							<div className="flex items-center gap-2 text-orange-600">
 								<span>🔒</span>
@@ -618,19 +847,52 @@ export default function PlanningPokerSession() {
 				{/* Participants List with Vote Cards */}
 				<div className="mb-8">
 					<div className="mb-6 flex min-h-[2.5rem] items-center justify-between">
-						<h2 className="text-xl font-semibold">Participants</h2>
-						{isOwner && (
-							<div className="flex h-10 items-center gap-2">
-								{!sessionVotesRevealed && voteCount > 0 && (
-									<Button onClick={handleRevealVotes}>🎭 Reveal Votes</Button>
+						<div className="flex items-center gap-3">
+							<h2 className="text-xl font-semibold">Participants</h2>
+							{(randomPickedParticipant || isRandomPicking) && (
+									<div className="flex items-center gap-2">
+										(
+										{isRandomPicking ? (
+											<>
+												<span className="animate-bounce text-xl">🎲</span>
+												<span className="text-foreground animate-pulse text-lg font-bold">
+													{randomPickDisplay || 'Picking...'}
+												</span>
+											</>
+										) : randomPickedParticipant ? (
+											<>
+												<span className="text-muted-foreground text-sm">
+													Picked:
+												</span>
+												<span className="text-xl">🎉</span>
+												<span className="text-lg font-bold">
+													{randomPickedParticipant.name}
+												</span>
+											</>
+										) : null}
+										)
+									</div>
 								)}
-								{sessionVotesRevealed && (
-									<Button onClick={handleResetVotes} variant="outline">
-										🔄 Reset Votes
-									</Button>
-								)}
-							</div>
-						)}
+						</div>
+						<div className="flex h-10 items-center gap-2">
+							{isOwner && votingParticipantCount > 0 && (
+								<Button
+									onClick={handleRandomPick}
+									variant="outline"
+									disabled={isRandomPicking}
+								>
+									{isRandomPicking ? '🎰 Picking...' : '🎲 Random Pick'}
+								</Button>
+							)}
+							{isOwner && !sessionVotesRevealed && voteCount > 0 && (
+								<Button onClick={handleRevealVotes}>🎭 Reveal Votes</Button>
+							)}
+							{isOwner && sessionVotesRevealed && (
+								<Button onClick={handleResetVotes} variant="outline">
+									🔄 Reset Votes
+								</Button>
+							)}
+						</div>
 					</div>
 
 					<div className="grid grid-cols-4 gap-4 sm:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6">
@@ -659,7 +921,12 @@ export default function PlanningPokerSession() {
 									revealedVotes?.find((v) => v.participantId === participant.id)
 										?.vote ||
 									(sessionVotesRevealed ? sessionVotes[participant.id] : null)
-								const participantColor = participantVote ? getVoteValueColor(participantVote) : null
+								const participantColor = participantVote
+									? getVoteValueColor(participantVote)
+									: null
+								const isRandomPicked =
+									randomPickedParticipant?.id === participant.id ||
+									(isRandomPicking && randomPickDisplay === participant.name)
 
 								return (
 									<div key={participant.id} className="relative">
@@ -668,7 +935,7 @@ export default function PlanningPokerSession() {
 											className={`absolute -top-3 left-1/2 z-10 -translate-x-1/2 transform rounded-full border px-3 py-1 text-xs font-medium shadow-sm ${
 												isCurrentUser
 													? 'bg-primary text-primary-foreground border-primary'
-													: 'border-gray-300 bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100 dark:border-gray-600'
+													: 'border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100'
 											} `}
 										>
 											<div className="flex items-center gap-1">
@@ -706,7 +973,9 @@ export default function PlanningPokerSession() {
 										</div>
 
 										{/* Vote Card with Flip Animation */}
-										<div className="relative aspect-[3/4] [perspective:1000px]">
+										<div
+											className={`relative aspect-[3/4] rounded-xl [perspective:1000px] ${isRandomPicked ? 'animate-border-spin' : ''}`}
+										>
 											<div
 												className={`relative h-full w-full transition-transform duration-700 [transform-style:preserve-3d] ${
 													sessionVotesRevealed && participantVote
@@ -741,7 +1010,9 @@ export default function PlanningPokerSession() {
 												{/* Back of card (vote revealed state) */}
 												<div
 													className={`absolute inset-0 flex [transform:rotateY(180deg)] flex-col items-center justify-center rounded-xl border pt-4 pb-2 shadow-sm [backface-visibility:hidden] ${!participant.isConnected ? 'opacity-50' : ''} ${
-														sessionVotesRevealed && participantVote && participantColor
+														sessionVotesRevealed &&
+														participantVote &&
+														participantColor
 															? `${participantColor.border} ${participantColor.bg} ${participantColor.text}`
 															: isParticipantOwner
 																? 'border-primary/30 bg-primary/10'
@@ -1058,6 +1329,29 @@ export default function PlanningPokerSession() {
 					{realtimeStatus}
 				</div>
 			</div>
+
+			{/* Random Pick Zoom Overlay */}
+			{showPickOverlay && randomPickedParticipant && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+					onClick={() => setShowPickOverlay(false)}
+				>
+					<div
+						className="animate-zoom-to-center animate-border-spin flex aspect-[3/4] w-52 flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-white/95 to-gray-100/95 shadow-2xl dark:from-gray-800/95 dark:to-gray-900/95 sm:w-60 md:w-72"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="flex flex-1 flex-col items-center justify-center gap-4">
+							<span className="text-6xl drop-shadow-sm">🎉</span>
+							<div className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-gray-50">
+								{randomPickedParticipant.name}
+							</div>
+							<div className="rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-5 py-1.5 text-sm font-semibold text-white shadow-md">
+								Picked!
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	)
 }

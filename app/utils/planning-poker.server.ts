@@ -37,6 +37,7 @@ export interface PlanningPokerSession {
 	connections: string[]
 	votes: Record<string, string> // participantId -> vote value
 	votesRevealed: boolean
+	roundStartedAt: number // Unix timestamp (ms) when current voting round started
 	customVoteOptions?: string[] // Custom voting options set by session owner
 }
 
@@ -100,6 +101,7 @@ export class PlanningPokerSessionManager {
 			connections: [],
 			votes: {},
 			votesRevealed: false,
+			roundStartedAt: Date.now(),
 			customVoteOptions: data.customVoteOptions,
 		}
 
@@ -422,6 +424,7 @@ export class PlanningPokerSessionManager {
 			votesRevealed: session.votesRevealed,
 			voteCount: Object.keys(session.votes).length,
 			participantName: participant.name,
+			roundStartedAt: session.roundStartedAt,
 		})
 
 		return { success: true }
@@ -442,6 +445,7 @@ export class PlanningPokerSessionManager {
 
 		session.votes = {}
 		session.votesRevealed = false
+		session.roundStartedAt = Date.now()
 		session.lastUpdated = new Date() // Update activity timestamp
 		console.log(`Votes reset by ${ownerName} in session ${sessionCode}`)
 
@@ -452,6 +456,7 @@ export class PlanningPokerSessionManager {
 			votes: session.votes,
 			votesRevealed: session.votesRevealed,
 			voteCount: 0,
+			roundStartedAt: session.roundStartedAt,
 		})
 
 		return { success: true }
@@ -493,9 +498,62 @@ export class PlanningPokerSessionManager {
 			votesRevealed: session.votesRevealed,
 			voteCount: Object.keys(session.votes).length,
 			revealedVotes: votesWithNames,
+			roundStartedAt: session.roundStartedAt,
 		})
 
 		return { success: true, votes: votesWithNames }
+	}
+
+	static randomPick(
+		sessionCode: string,
+		ownerName: string,
+	): {
+		success: boolean
+		picked?: { participantId: string; participantName: string; vote: string }
+		error?: string
+	} {
+		const session = activeSessions.get(sessionCode)
+		if (!session) {
+			return { success: false, error: 'Session not found' }
+		}
+
+		if (session.ownerName !== ownerName) {
+			return { success: false, error: 'Only session owner can random pick' }
+		}
+
+		// Get all non-owner participants
+		const eligibleParticipants = session.participants
+			.filter((p) => p.name !== session.ownerName)
+			.map((p) => ({
+				participantId: p.id,
+				participantName: p.name,
+				vote: session.votes[p.id] || '',
+			}))
+
+		if (eligibleParticipants.length === 0) {
+			return { success: false, error: 'No participants to pick from' }
+		}
+
+		const picked =
+			eligibleParticipants[
+				Math.floor(Math.random() * eligibleParticipants.length)
+			]!
+
+		console.log(
+			`Random pick by ${ownerName} in session ${sessionCode}: ${picked.participantName}`,
+		)
+
+		// Broadcast to all clients
+		broadcastSSEUpdate(sessionCode, {
+			type: 'random_pick',
+			participants: session.participants,
+			votes: session.votes,
+			votesRevealed: session.votesRevealed,
+			voteCount: Object.keys(session.votes).length,
+			randomPick: picked,
+		})
+
+		return { success: true, picked }
 	}
 
 	static getVotes(sessionCode: string): { success: boolean; votes?: Record<string, string>; error?: string } {
